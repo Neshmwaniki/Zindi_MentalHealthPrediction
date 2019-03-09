@@ -5,9 +5,7 @@ date: "March 8, 2019"
 output: html_document
 ---
   
-  ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = F)
-```
+## Introduction
 
 The World Health Organization estimates that 1.3 million Kenyans suffer from untreated major depressive disorder (MDD; commonly known as depression) every year, and that sub-Saharan Africa has the highest prevalence of the illness of any region in the world. Yet mental health treatment in Kenya suffers from a lack of resources and stigmatization. There are only two certified psychiatrists per million people in Kenya. Few facilities exist outside of urban areas and people are unlikely to know about or access them.
 
@@ -35,8 +33,8 @@ library(h2o)
 setwd("C:/Users/dmunene/OneDrive - Dalberg Global Development Advisors/RESSOL/Personal/Data Analysis/Busara MHPC/MHPC")
 
 # read data
-dtr <- read.csv("./train.csv")
-dts <- read.csv("./test.csv")
+d_tr <- read.csv("./train.csv")
+d_ts <- read.csv("./test.csv")
 
 ```
 
@@ -46,23 +44,23 @@ dts <- read.csv("./test.csv")
 
 ```{r}
 # Scheming structure of the data variables
-str(dtr)
+str(d_tr)
 ```
 
 ```{r}
 # Scheming the top 6 rows (train data)
-# head(dtr)
+# head(d_tr)
 ```
 
 
 ```{r}
 # Scheming the top 6 rows (test data)
-# head(dts)
+# head(d_ts)
 ```
 
 ```{r}
 # Scheming the structure of data variables
-str(dts)
+str(d_ts)
 ```
 
 
@@ -73,8 +71,8 @@ str(dts)
 # Survey date is not considered important for study.
 # hh_total members is a replica of hhsize
 
-dtr2 <- select(dtr,-c(3,11))
-dts2 <- select(dts,-c(3,11))
+d_tr2 <- select(d_tr,-c(11))
+d_ts2 <- select(d_ts,-c(11))
 
 ```
 
@@ -82,25 +80,29 @@ dts2 <- select(dts,-c(3,11))
 ```{r}
 
 # Reordering columns in dataset to bring response variable to front
-dtr2a <- dtr2 %>% select(depressed,everything())
+d_tr3 <- d_tr2 %>% select(depressed,everything())
 ```
 
 
 ```{r}
 # Restructuring age as numeric and not factor (testdata)
 # ensure response is factor
-dts2$age <- as.numeric(dts2$age)
+d_ts2$age <- as.numeric(d_ts2$age)
+
+# parse dates accordingly
+d_ts2$survey_date <- lubridate::parse_date_time(d_ts2$survey_date,"dmy")
+d_tr3$survey_date <- lubridate::parse_date_time(d_tr3$survey_date,"dmy")
 
 ```
 
 ## Data Quality Control
 
 ```{r}
-#Checking for missingness
-colSums(is.na(dtr))
+# Checking for missingness
+colSums(is.na(d_tr3))
 
 # Return the column names containing missing observations
-list_na <- colnames(dtr2a)[apply(dtr2a,2,anyNA)]
+list_na <- colnames(d_tr3)[apply(d_tr3,2,anyNA)]
 list_na
 ```
 
@@ -110,8 +112,8 @@ list_na
 
 # md.pattern(dtr2a)
 
-mice_plot <- aggr(dtr2a,col = c('navyblue','yellow'),
-                  numbers = TRUE,sortVars = TRUE,labels = names(dtr2a),cex.axis = 7,
+mice_plot <- aggr(d_tr3,col = c('navyblue','yellow'),
+                  numbers = TRUE,sortVars = TRUE,labels = names(d_tr3),cex.axis = 5,
                   gap = 3,ylab = c("Missing Data ", "Pattern"))
 
 ```
@@ -120,7 +122,9 @@ mice_plot <- aggr(dtr2a,col = c('navyblue','yellow'),
 
 ## Treating for Missingness
 ```{r, echo=F}
-imputedDT <- mice(dtr2a, m = 5, maxit = 50, method = "pmm", seed = 121,threshold = 1)
+# threshold improves the imputation
+
+imputedDT <- mice(d_tr3, m = 5, maxit = 50, method = "pmm", seed = 121,threshold = 1)
 # summary(imputedDT)
 
 ```
@@ -159,8 +163,8 @@ h2o.init()
 
 ## Onboarding datasets on to h2o framework
 ```{r}
-dtr_h <- as.h2o(completeDT, destination_frame = "dtr_h")
-dts_h <- as.h2o(dts2, destination_frame = "dts_h")
+d_tr4 <- as.h2o(completeDT, destination_frame = "d_tr4")
+d_ts4 <- as.h2o(d_ts2, destination_frame = "d_ts4")
 ```
 
 
