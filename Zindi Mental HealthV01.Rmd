@@ -1,0 +1,387 @@
+---
+title: 'Zindi_Mental Health Prediction Challenge'
+author: "Denis Munene"
+date: ' `r as.Date(Sys.time())` '
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, warning = F, message = F, fig.width = 10, fig.height = 10, results = "asis")
+
+```
+
+
+## Introduction
+
+The World Health Organization estimates that 1.3 million Kenyans suffer from untreated major depressive disorder (MDD; commonly known as depression) every year, and that sub-Saharan Africa has the highest prevalence of the illness of any region in the world. Yet mental health treatment in Kenya suffers from a lack of resources and stigmatization. There are only two certified psychiatrists per million people in Kenya. Few facilities exist outside of urban areas and people are unlikely to know about or access them.
+
+Can machine learning help alleviate this problem? Smart targeting of potential cases could help enable scarce resources to reach those who most need it and improve or save an untold number of lives.
+
+With this in mind, the Busara Center for Behavioral Economics has decided to challenge the data science community in Nairobi, across Africa, and around the world to predict depression cases from routine survey data. 
+
+## Importing Libraries
+
+```{r, warning=F }
+# load libraries
+library(tidyverse)
+library(dplyr)
+library(mice)
+library(VIM)
+library(h2o)
+library(ggplot2)
+```
+
+## Importing Datasets
+
+```{r, warning=F}
+# import datasets
+
+# Setting working directory to files' location
+setwd("C:/Users/dmunene/OneDrive - Dalberg Global Development Advisors/RESSOL/Personal/Data Analysis/Busara MHPC/Zindi Mental Health/Data")
+
+
+# read data
+d_tr <- read.csv("./train.csv")
+d_ts <- read.csv("./test.csv")
+
+```
+
+
+
+## Exploring the Datasets
+
+```{r}
+# Scheming structure of the data variables
+str(d_tr)
+```
+
+```{r}
+# Scheming the top 6 rows (train data)
+# head(d_tr)
+```
+
+
+```{r}
+# Scheming the top 6 rows (test data)
+# head(d_ts)
+```
+
+```{r}
+# Scheming the structure of data variables
+str(d_ts)
+```
+
+
+## Data Manipulation
+
+```{r}
+# Dropping survey_date and hh_total members on both train and test data
+# survey date is not considered important to the study
+# hh_total members is a replica of hhsize
+
+d_tr2 <- select(d_tr,-c(3,11))
+d_ts2 <- select(d_ts,-c(3,11))
+
+```
+
+
+```{r}
+
+# Reordering columns in dataset to bring response variable to front
+d_tr3 <- d_tr2 %>% select(depressed,everything())
+d_ts3 <- d_ts2 %>% select(depressed,everything())
+```
+
+
+```{r}
+# Restructuring age as numeric and not factor (testdata)
+# ensure response is factor
+d_ts3$age <- as.numeric(d_ts3$age)
+
+```
+
+## Data Quality Control
+
+```{r}
+# Checking for missingness
+colSums(is.na(d_tr3))
+
+# Return the column names containing missing observations
+list_na <- colnames(d_tr3)[apply(d_tr3,2,anyNA)]
+list_na
+```
+
+
+## Visualizing Missingness
+```{r}
+
+# md.pattern(d_tr3)
+
+missingness_plot <- aggr(d_tr3,col = c('navyblue','yellow'),
+                  numbers = TRUE,sortVars = TRUE,labels = names(d_tr3),cex.axis = 5,
+                  gap = 4,ylab = c("Missing Data ", "Pattern"))
+
+```
+
+
+
+## Treating for Missingness
+```{r, }
+# threshold improves the imputation
+
+imputedDT <- mice(d_tr3, m = 5, maxit = 30, method = "pmm", seed = 124,threshold = 1)
+# summary(imputedDT)
+
+```
+
+## Assessing if missingness is treated
+```{r}
+# Randomly selecting a sample
+completeDT <- complete(imputedDT,3)
+colSums(is.na(completeDT))
+# Assessing treatment of missing 
+listna2 <- colnames(completeDT)[apply(completeDT,2,anyNA)]
+listna2
+```
+
+## Checking for duplicates
+
+```{r}
+obs <- data.frame(table(d_tr3$surveyid))
+obs[obs$Freq>1,]
+
+```
+
+
+
+## Exploration of Demographic Variables
+
+```{r, warning=F}
+# age
+plot1 <- hist(completeDT$age,breaks = 12,col = "red",xlab = "Respondent Age",main = "Histogram of Age")
+
+```
+
+```{r,warning=F}
+plot2 <- ggplot(completeDT,aes(x = edu))+ geom_bar(fill = "red")+labs(title = "Education",x = "Years of education", y = "Frequency")+theme_bw()
+
+print(plot2)
+```
+
+
+```{r,warning=F}
+
+plot3 <- ggplot(completeDT, aes(hhsize))+geom_density(fill = "blue")+ labs(title = "Size of household",x = "Size") +theme_bw()
+
+print(plot3)
+
+```
+
+
+```{r,warning=F}
+plot4 <- ggplot(completeDT, aes(age, as.numeric(depressed)-1, color = as.factor(femaleres)))+stat_smooth(method = "glm",formula = y~x,alpha = 0.2, size = 2)+ geom_point(position = position_jitter(height = 0.3,width = 0))+
+  scale_color_discrete("Gender",labels = c("Male","Female"))+ xlab("Age")+ylab("Pr (Depressed)")
+
+print(plot4)
+```
+
+```{r,warning=F}
+plot5 <- ggplot(completeDT, aes(age, as.numeric(depressed)-1, color = as.factor(married)))+stat_smooth(method = "glm",formula = y~x,alpha = 0.2, size = 2)+ geom_point(position = position_jitter(height = 0.3,width = 0))+
+  scale_color_discrete("Marital Status",labels = c("Not Married","Married"))+ xlab("Age")+ylab("Pr (Depressed)")
+
+print(plot5)
+```
+
+```{r,warning=F}
+plot6 <- ggplot(completeDT, aes(edu, as.numeric(depressed)-1, color = as.factor(married)))+stat_smooth(method = "glm",formula = y~x,alpha = 0.2, size = 2)+ geom_point(position = position_jitter(height = 0.3,width = 0))+
+  scale_color_discrete("Gender",labels = c("Male","Female"))+ xlab("Years of Education")+ylab("Pr (Depressed)")
+
+print(plot6)
+```
+
+
+## Data Processing for MachineLearning
+
+```{r}
+## pick a response for the supervised problem
+response <- "depressed"
+
+# For binary classification, response should be a factor
+completeDT[[response]] <- as.factor(completeDT[[response]])
+
+## use all other columns (except for the name) as predictors
+predictors <- setdiff(names(completeDT),c(response,"name"))
+```
+
+
+## Initializing h2o framework
+```{r}
+# Working with h2o framework fastens our processes by maximizing comuputer capabilities.
+# Link below should help in download and installing before running: http://docs.h2o.ai/h2o/latest-stable/h2o-docs/downloading.html
+
+h2o.init()
+```
+
+## Onboarding datasets on to h2o framework
+```{r}
+d_tr4 <- as.h2o(completeDT, destination_frame = "d_tr4")
+d_ts4 <- as.h2o(d_ts3, destination_frame = "d_ts4")
+```
+
+
+## Test Train Split
+```{r}
+# Construct test and train sets using sampling whilst maintaining a validation set (usually helps control for overfitting)
+
+tr.split <- h2o.splitFrame(data = d_tr4, ratios = c(0.6,0.2),destination_frames = c("tr.train","tr.valid","tr.test"), seed = 124)
+tr.train <- tr.split[[1]]
+tr.valid <- tr.split[[2]]
+tr.test <- tr.split[[3]]
+
+
+```
+
+
+## Modeling
+
+```{r}
+
+## GLM
+tr.glm <- h2o.glm(x =predictors, y = response,training_frame = tr.train,family = "binomial",nfolds = 10,fold_assignment  = "Modulo",keep_cross_validation_predictions = T,seed = 1233)
+
+## Show a detailed model summary
+summary(tr.glm)
+```
+
+
+```{r}
+
+## GBM
+tr.gbm <- h2o.gbm(x =predictors, y = response,training_frame = tr.train,distribution = "bernoulli",ntrees = 500,max_depth = 9,min_rows =2,learn_rate = 0.03,nfolds = 10,fold_assignment  = "Modulo",keep_cross_validation_predictions = T,seed = 1234)
+
+## Show a detailed model summary
+summary(tr.gbm)
+```
+
+```{r}
+## RF
+
+tr.rf <- h2o.randomForest(x = predictors,y = response,training_frame = tr.train, nfolds = 10,fold_assignment = "Modulo", ntrees = 500,keep_cross_validation_predictions = T,seed = 1234)
+
+## Show a detailed model summary
+summary(tr.rf)
+```
+
+
+### Assessing Performance
+```{r}
+print(h2o.auc(h2o.performance(tr.glm,newdata = tr.valid)))
+```
+
+
+```{r}
+#Evaluating the parameters
+
+print(h2o.auc(h2o.performance(tr.gbm,newdata = tr.valid)))
+```
+
+```{r}
+print(h2o.auc(h2o.performance(tr.rf,newdata = tr.valid)))
+```
+
+
+```{r}
+
+# confusion matrix from gbm model on test data
+h2o.confusionMatrix(tr.glm,tr.test)
+
+```
+
+
+```{r}
+# confusion matrix from glm model on test data
+h2o.confusionMatrix(tr.gbm,tr.test)
+```
+
+```{r}
+# confusion matrix from glm model on test data
+h2o.confusionMatrix(tr.rf,tr.test)
+```
+
+
+
+## Ensembling
+This helps leverage off the strengths of each of the algorithms in the prediction. 
+
+```{r}
+ensemble <- h2o.stackedEnsemble(x = predictors,y = response,training_frame = tr.train,model_id = "binomial_ensemble_1",base_models = list(tr.gbm,tr.gbm,tr.rf))
+
+# Evaluate ensemble on test
+perf <- h2o.performance(ensemble,newdata = tr.test)
+print(perf)
+```
+
+
+## Model Evaluation
+
+```{r}
+## Get the cross-validated AUC by scoring the combined holdout predictions.
+## (Instead of taking the average of the metrics across the folds)
+print(h2o.auc(h2o.performance(ensemble,newdata = tr.valid)))
+
+```
+
+
+## Predicting
+
+```{r}
+# Predict on testsplit data 
+pred <- h2o.predict(ensemble, newdata = tr.test)
+
+# Confusion Matrix
+h2o.confusionMatrix(ensemble,tr.test)
+
+```
+
+
+```{r}
+# Predict on Main Test data using RF/enseble as it has a better score
+
+predicted <- h2o.predict(tr.rf,newdata = d_ts4)
+head(predicted)
+
+```
+
+## Formatting Output
+```{r}
+predicted_df <- as.data.frame(predicted)
+
+# Embedding on Main test data
+df <- data.frame(d_ts$surveyid,predicted_df)
+df_f <- df %>% select(surveyid = d_ts.surveyid,depressed = predict)
+```
+
+
+## Submission
+```{r}
+
+dir.create("./Output")
+write.csv(df_f,"./Output/Submission3e.csv",row.names = F)
+
+```
+
+Although the study is only a sample representative of the population and limited to the Survey conducted by Busara, the modelling exercise enlightens us about mental health. Beyond the model that can in future be used to predict people likely to be depressed and hence direct health professionals accordinly, it also highlights some of the possible causes of depression. 
+
+Current research on mental health has not yet yielded clear cut causes of depression, however, using the dataset and modelling we can summarize some variables that seem crucial to determining whether and individual is depressed or not. These include:
+
+1. Respondent Age
+2. Years of education completed (respondent)
+3. Medical expenses per episode, entire HH 
+
+
+An indepth study of the variables in relation to mental health is definitely likely to enlighten the stakeholders on measures that would help develop a sustainable solution. 
