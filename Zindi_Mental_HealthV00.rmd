@@ -1,0 +1,405 @@
+---
+title: 'Zindi_Mental Health Prediction Challenge'
+author: "Denis Munene"
+date: ' `r as.Date(Sys.time())` '
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, warning = F, message = F, fig.width = 10, fig.height = 10)
+
+```
+
+
+## Introduction
+
+The World Health Organization estimates that 1.3 million Kenyans suffer from untreated major depressive disorder (MDD; commonly known as depression) every year, and that sub-Saharan Africa has the highest prevalence of the illness of any region in the world. Yet mental health treatment in Kenya suffers from a lack of resources and stigmatization. There are only two certified psychiatrists per million people in Kenya. Few facilities exist outside of urban areas and people are unlikely to know about or access them.
+
+Can machine learning help alleviate this problem? Smart targeting of potential cases could help enable scarce resources to reach those who most need it and improve or save an untold number of lives.
+
+With this in mind, the Busara Center for Behavioral Economics decided to challenge the data science community in Nairobi, across Africa, and around the world to predict depression cases from routine survey data. 
+
+## Importing Libraries
+
+```{r, warning=F }
+# load libraries
+library(caret)
+library(tidyverse)
+library(dplyr)
+library(mice)
+library(VIM)
+library(h2o)
+library(ggplot2)
+```
+
+## Importing Datasets
+
+```{r, warning=F}
+# import datasets
+
+# Setting working directory to files' location
+setwd("C:/Users/dmunene/OneDrive - Dalberg Global Development Advisors/RESSOL/Personal/Data Analysis/Busara MHPC/Zindi Mental Health/Data")
+
+
+# read data
+d_tr <- read.csv("./train.csv")
+d_ts <- read.csv("./test.csv")
+
+```
+
+
+
+## Exploring the Datasets
+
+```{r, echo=F}
+# Scheming structure of the data variables
+str(d_tr)
+```
+
+```{r}
+# Scheming the top 6 rows (train data)
+# head(d_tr)
+```
+
+
+```{r}
+# Scheming the top 6 rows (test data)
+# head(d_ts)
+```
+
+```{r, echo=F}
+# Scheming the structure of data variables
+str(d_ts)
+```
+
+## Data Quality Control
+
+```{r}
+# Checking for missingness
+colSums(is.na(d_tr))
+
+# Return the column names containing missing observations
+list_na <- colnames(d_tr)[apply(d_tr,2,anyNA)]
+list_na
+```
+
+
+## Visualizing Missingness
+```{r}
+
+# md.pattern(d_tr3)
+
+missingness_plot <- aggr(d_tr3,col = c('navyblue','yellow'),
+                  numbers = TRUE,sortVars = TRUE,labels = names(d_tr),cex.axis = 5,
+                  gap = 4,ylab = c("Missing Data ", "Pattern"))
+
+```
+
+
+
+## Treating for Missingness
+```{r,echo=F,results = "hide" }
+# threshold improves the imputation
+
+imputed_tr <- mice(d_tr, m = 5, maxit = 30, method = "cart", seed = 124,threshold = 1)
+# summary(imputedDT)
+
+```
+
+## Assessing if missingness is treated
+```{r}
+# Randomly selecting a sample
+d_tr2 <- complete(imputed_tr,4)
+colSums(is.na(d_tr2))
+# Assessing treatment of missing 
+listna2 <- colnames(d_tr2)[apply(d_tr2,2,anyNA)]
+listna2
+```
+
+## Checking for duplicates
+
+```{r}
+
+obs <- data.frame(table(d_tr2$surveyid))
+obs[obs$Freq>1,]
+
+```
+
+## Data Manipulation
+
+```{r}
+
+# combining dummy variables ent_wagelabor	ent_ownfarm	ent_business	ent_nonagbusiness
+# d_tr2$source_of_income <- names(d_tr2[28:31])[max.col(d_tr2[28:31])]
+# d_ts$source_of_income <- names(d_ts[28:31])[max.col(d_ts[28:31])]
+# 
+# d_tr2$enough_food <- names(d_tr2[44:45])[max.col(d_tr2[44:45])]
+# d_ts$enough_food <- names(d_ts[44:45])[max.col(d_ts[44:45])]
+
+# Dropping survey_date and hh_total members on both train and test data
+# survey date is not considered important to the study
+# hh_total members is a replica of hhsize
+
+d_tr3 <- select(d_tr2,-c(3,11))
+d_ts3 <- select(d_ts,-c(3,11))
+```
+
+
+```{r}
+# Reordering columns in dataset to bring response variable to front
+d_tr3a <- d_tr3 %>% select(depressed,everything())
+d_ts3a <- d_ts3 %>% select(depressed,everything())
+
+# Restructuring age as numeric and not factor (testdata)
+# ensure response is factor
+d_ts3a$age <- as.numeric(d_ts3a$age)
+
+```
+
+
+## Exploration of Demographic Variables
+
+```{r, warning=F}
+# age
+plot1 <- hist(d_tr3a$age,breaks = 12,col = "red",xlab = "Respondent Age",main = "Histogram of Age")
+
+```
+
+```{r,warning=F}
+plot2 <- ggplot(d_tr3a,aes(x = edu))+ geom_bar(fill = "red")+labs(title = "Education",x = "Years of education", y = "Frequency")+theme_bw()
+
+print(plot2)
+```
+
+
+```{r,warning=F}
+
+plot3 <- ggplot(d_tr3a, aes(hhsize))+geom_density(fill = "blue")+ labs(title = "Size of household",x = "Size") +theme_bw()
+
+print(plot3)
+
+```
+
+
+
+```{r}
+plot4 <- ggplot(d_tr3a,aes(age,as.numeric(depressed)))+stat_smooth(method = "glm", formula = y~x,alpha = 0.2, size = 2)+geom_point(position = position_jitter(height = 0.2,width = 0))+xlab("Age")+ylab("Pr(Depressed)")
+
+print(plot4)
+```
+
+```{r}
+plot5 <- ggplot(d_tr3a,aes(edu,as.numeric(depressed)))+stat_smooth(method = "glm", formula = y~x,alpha = 0.2,size = 2)+geom_point(position = position_jitter(height = 0.3,width = 0))+xlab("Years Education")+ylab("Pr(Depressed)")
+
+print(plot5)
+```
+
+```{r}
+plot6 <- ggplot(d_tr3a, aes(edu, as.numeric(depressed)))+stat_smooth(method = "glm",formula = y~x,alpha = 0.2, size = 2)+ geom_point(position = position_jitter(height = 0.3,width = 0))+xlab("Years of Education")+ylab("Pr (Depressed)")
+
+print(plot6)
+```
+
+
+```{r,warning=F}
+plot7 <- ggplot(d_tr3a, aes(age, as.numeric(depressed), color = as.factor(femaleres)))+stat_smooth(method = "glm",formula = y~x,alpha = 0.2, size = 2)+ geom_point(position = position_jitter(height = 0.3,width = 0))+
+  scale_color_discrete("Gender",labels = c("Male","Female"))+ xlab("Age")+ylab("Pr (Depressed)")
+
+print(plot7)
+```
+
+
+```{r,warning=F}
+plot8 <- ggplot(d_tr3a, aes(age, as.numeric(depressed), color = as.factor(married)))+stat_smooth(method = "glm",formula = y~x,alpha = 0.2, size = 2)+ geom_point(position = position_jitter(height = 0.3,width = 0))+
+  scale_color_discrete("Marital Status",labels = c("Not Married","Married"))+ xlab("Age")+ylab("Pr (Depressed)")
+
+print(plot8)
+```
+
+
+
+## Data Processing for MachineLearning
+
+```{r}
+## pick a response for the supervised problem
+response <- "depressed"
+
+# For binary classification, response should be a factor
+d_tr3a[[response]] <- as.factor(d_tr3a[[response]])
+
+## use all other columns (except for the surveyid) as predictors
+# predictors <- d_tr3a[-c(2)]
+predictors <- setdiff(names(d_tr3a),c(response,"surveyid"))
+
+
+```
+
+
+## Initializing h2o framework
+```{r}
+# Working with h2o framework fastens our processes by maximizing comuputer capabilities.
+# Link below should help in download and installing before running: http://docs.h2o.ai/h2o/latest-stable/h2o-docs/downloading.html
+
+h2o.init()
+```
+
+## Onboarding datasets on to h2o framework
+```{r, results = "hide"}
+d_tr4 <- as.h2o(d_tr3a, destination_frame = "d_tr4")
+d_ts4 <- as.h2o(d_ts3a, destination_frame = "d_ts4")
+```
+
+
+## Test Train Split
+```{r, results="hide"}
+# Construct test and train sets using sampling whilst maintaining a validation set (usually helps control for overfitting)
+
+tr.split <- h2o.splitFrame(data = d_tr4, ratios = c(0.6,0.2),destination_frames = c("tr.train","tr.valid","tr.test"), seed = 124)
+tr.train <- tr.split[[1]]
+tr.valid <- tr.split[[2]]
+tr.test <- tr.split[[3]]
+
+```
+
+## Modeling
+
+```{r}
+## RF
+
+tr.rf <- h2o.randomForest(x = predictors,y = response,training_frame = tr.train,nfolds = 10,fold_assignment = "Modulo", ntrees = 500,keep_cross_validation_predictions = T,seed = 1234)
+
+## Show a detailed model summary
+summary(tr.rf)
+# 1	edu	172.700882	1.000000	0.049072
+# 2	village	153.853241	0.890865	0.043716
+# 3	age	148.575546	0.860306	0.042217
+# 4	med_portion_sickinjured	122.139328	0.707230	0.034705
+# 5	children	111.467934	0.645439	0.031673
+
+
+```
+## GBM
+```{r}
+tr.gbm <- h2o.gbm(training_frame =  tr.train,x = predictors,y = response,ntrees = 1000,learn_rate = 0.3,max_depth = 15,stopping_rounds = 2,stopping_tolerance = 0.01, seed = 2343)
+
+summary(tr.gbm)
+# 1	ent_farmexpenses	23.848558	1.000000	0.060281
+# 2	edu	22.519178	0.944257	0.056921
+# 3	village	15.513343	0.650494	0.039213
+# 4	age	15.425961	0.646830	0.038992
+# 5	hhsize	14.974106	0.627883	0.037850
+
+
+```
+
+## Tuning
+
+```{r}
+hyper_params <- list(max_depth = c(4,6,8,12,16,20))
+
+grid <- h2o.grid(hyper_params = hyper_params,search_criteria = list(strategy = "Cartesian"),algorithm = "gbm",grid_id = "depth_grid",x = predictors,y = response,training_frame = tr.train,validation_frame = tr.valid, ntrees = 1000,learn_rate = 0.05,learn_rate_annealing = 0.99,sample_rate = 0.6, col_sample_rate = 0.7, seed = 1412,stopping_rounds = 5,stopping_tolerance = 1e-4, stopping_metric = "AUC", score_tree_interval = 10)
+
+sortedGrid <- h2o.getGrid("depth_grid",sort_by = "auc",decreasing = T)
+
+sortedGrid
+## find the range of max_depth for the top 5 models
+topDepths <- sortedGrid@summary_table$max_depth[1:5]
+minDepth <- min(as.numeric(topDepths))
+maxDepth <- max(as.numeric(topDepths))
+
+
+```
+## Tuning2
+
+```{r}
+
+hyper_params <- list(max_depth = seq(minDepth,maxDepth,1),sample_rate = seq(0.2,1,0.01),col_sample_rate = seq(0.2,1,0.01),col_sample_rate_per_tree = seq(0.2,1,0.01),min_rows = 2^seq(0,log2(nrow(tr.train))-1,1),
+                    nbins = 2^seq(4,10,1),nbins_cats = 2^seq(4,12,1),min_split_improvement = c(0,1e-8,1e-6,1e-4),histogram_type = c("UniformAdaptive","QuantilesGlobal","RoundRobin"))
+                    
+                    
+                    
+                    
+search_criteria = list(strategy = "RandomDiscrete",max_runtime_secs = 3600,max_models = 100,seed = 1565,stopping_rounds = 5,stopping_metric = "AUC",stopping_tolerance = 1e-3)
+
+grid <- h2o.grid(hyper_params = hyper_params,search_criteria = search_criteria,algorithm = "gbm",grid_id = "final_grid",x = predictors,y = response,training_frame = tr.train,validation_frame = tr.valid,ntrees = 1000,learn_rate = 0.05,learn_rate_annealing = 0.99,max_runtime_secs = 3600,stopping_rounds = 5,stopping_tolerance = 1e-4, stopping_metric = "AUC",score_tree_interval = 10, seed = 178)
+
+sortedGrid <- h2o.getGrid("final_grid", sort_by = "auc",decreasing = T)
+
+
+sortedGrid
+
+for (i in 1:5){
+  gbm <- h2o.getModel(sortedGrid@model_ids[[i]])
+  print(h2o.auc(h2o.performance(gbm,valid = T)))
+}
+
+# [1] 0.6569948
+# [1] 0.6432642
+# [1] 0.6388601
+# [1] 0.6168394
+# [1] 0.6158031
+```
+
+
+### Assessing Performance
+
+```{r}
+print(h2o.auc(h2o.performance(tr.rf,newdata = tr.valid)))
+```
+```{r}
+print(h2o.auc(h2o.performance(tr.gbm,newdata = tr.valid)))
+```
+
+
+```{r}
+# confusion matrix from glm model on test data
+h2o.confusionMatrix(tr.rf,tr.test)
+```
+
+
+
+## Predicting
+
+
+```{r}
+# Predict on Main Test data using RF
+
+predicted <- h2o.predict(tr.rf,newdata = d_ts4)
+head(predicted)
+
+```
+
+## Formatting Output
+```{r}
+predicted_df <- as.data.frame(predicted)
+
+# Embedding on Main test data
+df <- data.frame(d_ts$surveyid,predicted_df)
+df_f <- df %>% select(surveyid = d_ts.surveyid,depressed = predict)
+```
+
+
+## Submission
+```{r}
+
+dir.create("./Output")
+write.csv(df_f,"./Output/Submission3e.csv",row.names = F)
+
+```
+
+Although the study is only a sample representative of the population and limited to the Survey conducted by Busara, the modelling exercise enlightens us about mental health. Beyond the model that can in future be used to predict people likely to be depressed and hence direct health professionals accordinly, it also highlights some of the possible causes of depression. 
+
+Current research on mental health has no sufficient data on clear cut causes of depression, however, using the dataset and modelling we can summarize some variables that seem crucial to determining whether and individual is depressed or not. Top three of these include:
+
+1. Respondent Age
+2. Years of Education
+3. Village of stay
+
+
+An indepth study of the variables in relation to mental health is definitely likely to enlighten the stakeholders on measures that would help develop a sustainable solution. 
+
